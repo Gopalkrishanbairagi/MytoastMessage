@@ -1,0 +1,54 @@
+// Webservices
+class HitApi {
+    static let sharedInstance = HitApi()
+    func sendRequest<T: Decodable>(api: String, parameters: [String: Any]? = nil,outputBlock:@escaping (T) -> () ) {
+        Loader.sharedInstance.showLoader()
+        guard let url = URL.init(string: "http://raunka.com/guruApp/" + api) else {return}
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        
+        if let parameters = parameters {
+            guard let httpBody = try? JSONSerialization.data(withJSONObject: parameters, options: []) else {return}
+            request.httpBody = httpBody
+        }
+        
+        URLSession.shared.dataTask(with: request) { (data, response, error) in
+            DispatchQueue.main.async {
+                Loader.sharedInstance.hideLoader()
+                if let err = error {
+                    print(err.localizedDescription)
+                    return
+                }
+                guard let data = data else {return}
+                do {
+                    let obj = try JSONDecoder().decode(T.self, from: data)
+                    outputBlock(obj)
+                } catch let jsonErr {
+                    print(jsonErr)
+                }
+            }
+            }.resume()
+    }
+}
+
+// Create textfeild with Padding
+class TextFieldwithPadding: UITextField {
+    
+    open var padding = UIEdgeInsets(top: 0, left: 10, bottom: 0, right: 5);
+    
+    override func textRect(forBounds bounds: CGRect) -> CGRect {
+        return UIEdgeInsetsInsetRect(bounds, padding)
+    }
+    
+    override func placeholderRect(forBounds bounds: CGRect) -> CGRect {
+        return UIEdgeInsetsInsetRect(bounds, padding)
+    }
+    
+    override func editingRect(forBounds bounds: CGRect) -> CGRect {
+        return UIEdgeInsetsInsetRect(bounds, padding)
+    }
+    
+    func placeholderWithDefaultColorColor(){
+        self.attributedPlaceholder = NSAttributedString.init(string: self.placeholder!, attributes: [NSAttributedStringKey.foregroundColor : UIColor.init(hex: 0x6E6E6E, alpha: 1)])
+    }
+}
