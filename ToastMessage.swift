@@ -46,16 +46,23 @@ extension UIColor {
         self.init(red: red, green: green, blue: blue, alpha: alpha)
     }
 }
+
+let imageCache = NSCache<NSString, UIImage>()
 extension UIImageView{
     func setImageWithUrl(str: String, placeHolder: UIImage? = #imageLiteral(resourceName: "loade_cover")){
         image = placeHolder
         guard let url = URL.init(string: ("http://raunka.com/guruApp/img/" + str)) else {return}
+        if let cachedImage = imageCache.object(forKey: url.absoluteString as NSString) {
+            self.image = cachedImage
+        }
+        
         URLSession.shared.dataTask(with: url, completionHandler: { (data, respones, error) in
             DispatchQueue.main.async {
                 if let err = error{
                     print(err)
                     return
                 }else if let data = data, let image = UIImage(data: data){
+                    imageCache.setObject(image, forKey: url.absoluteString as NSString)
                     self.image = image
                 }
             }
