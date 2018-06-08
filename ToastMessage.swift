@@ -46,4 +46,19 @@ extension UIColor {
         self.init(red: red, green: green, blue: blue, alpha: alpha)
     }
 }
-
+extension UIImageView{
+    func setImageWithUrl(str: String, placeHolder: UIImage? = #imageLiteral(resourceName: "loade_cover")){
+        image = placeHolder
+        guard let url = URL.init(string: ("http://raunka.com/guruApp/img/" + str)) else {return}
+        URLSession.shared.dataTask(with: url, completionHandler: { (data, respones, error) in
+            DispatchQueue.main.async {
+                if let err = error{
+                    print(err)
+                    return
+                }else if let data = data, let image = UIImage(data: data){
+                    self.image = image
+                }
+            }
+        }).resume()
+    }
+}
