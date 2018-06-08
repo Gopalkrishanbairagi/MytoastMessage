@@ -54,6 +54,7 @@ extension UIImageView{
         guard let url = URL.init(string: ("http://raunka.com/guruApp/img/" + str)) else {return}
         if let cachedImage = imageCache.object(forKey: url.absoluteString as NSString) {
             self.image = cachedImage
+            return
         }
         
         URLSession.shared.dataTask(with: url, completionHandler: { (data, respones, error) in
