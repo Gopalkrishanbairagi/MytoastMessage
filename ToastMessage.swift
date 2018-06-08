@@ -47,24 +47,3 @@ extension UIColor {
     }
 }
 
-// Create textfeild with Padding
-class TextFieldwithPadding: UITextField {
-    
-    open var padding = UIEdgeInsets(top: 0, left: 10, bottom: 0, right: 5);
-    
-    override func textRect(forBounds bounds: CGRect) -> CGRect {
-        return UIEdgeInsetsInsetRect(bounds, padding)
-    }
-    
-    override func placeholderRect(forBounds bounds: CGRect) -> CGRect {
-        return UIEdgeInsetsInsetRect(bounds, padding)
-    }
-    
-    override func editingRect(forBounds bounds: CGRect) -> CGRect {
-        return UIEdgeInsetsInsetRect(bounds, padding)
-    }
-    
-    func placeholderWithDefaultColorColor(){
-        self.attributedPlaceholder = NSAttributedString.init(string: self.placeholder!, attributes: [NSAttributedStringKey.foregroundColor : UIColor.init(hex: 0x6E6E6E, alpha: 1)])
-    }
-}
