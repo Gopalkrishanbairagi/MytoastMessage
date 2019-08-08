@@ -1,35 +1,273 @@
 // Webservices
+//
+//  HitApi.swift
+//  SafeSide Tactical
+//
+//  Created by Gopal on 11/12/18.
+//  Copyright © 2018 Rvtech. All rights reserved.
+//
+
+import UIKit
+import SystemConfiguration
+
 class HitApi {
-    static let sharedInstance = HitApi()
-    func sendRequest<T: Decodable>(api: String, parameters: [String: Any]? = nil,outputBlock:@escaping (T) -> () ) {
-        Loader.sharedInstance.showLoader()
-        guard let url = URL.init(string: "http://raunka.com/guruApp/" + api) else {return}
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        
-        if let parameters = parameters {
-            guard let httpBody = try? JSONSerialization.data(withJSONObject: parameters, options: []) else {return}
-            request.httpBody = httpBody
+    
+    private init() {}
+    static let shared = HitApi()
+    
+    func sendRequest<T: Decodable>(api: String, parameters: [String: Any]? = nil,outputBlock: @escaping (Result<T, Error>) -> () ) {
+        if !isConnectedToNetwork() {
+            outputBlock(.failure(NSError(domain: "", code: 1, userInfo: [NSLocalizedDescriptionKey: "No Internet Connection"])))
+            return
         }
         
+        guard let url = URL(string: (baseUrl + api).replacingOccurrences(of: " ", with: "%20")) else {
+             outputBlock(.failure(NSError(domain: "", code: 1, userInfo: [NSLocalizedDescriptionKey: "Bad Url"])))
+            return
+        }
+        
+        print("hitting: ",url.absoluteString)
+        var request = URLRequest(url: url)
+      
+        if let parameters = parameters {
+            print("parameters are :", parameters)
+            request.httpMethod = "POST"
+            var output = ""
+            for (key,value) in parameters {
+                output += "\(key)=\(value)&"
+            }
+            output.removeLast()
+            request.httpBody = output.data(using: .utf8)
+        }
+        self.sessionHitWith(request: request) { (result: Result<T, Error>) in
+            outputBlock(result)
+        }
+    }
+    
+    func uploadImages<T: Decodable>(api: String, parameters:[String: Any]? = nil, images: [String: UIImage], outBlock: @escaping (Result<T, Error>) -> Void) {
+        if !isConnectedToNetwork() {
+            outBlock(.failure(NSError(domain: "", code: 1, userInfo: [NSLocalizedDescriptionKey: "No Internet Connection"])))
+            return
+        }
+        guard let url = URL(string: (baseUrl + api).replacingOccurrences(of: " ", with: "%20")) else {
+            outBlock(.failure(NSError(domain: "", code: 1, userInfo: [NSLocalizedDescriptionKey: "Bad Url"])))
+            return
+        }
+        print("hitting: ",url.absoluteString)
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        let boundary = "Boundary-\(UUID().uuidString)"
+        request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        let lineBreak = "\r\n"
+        var body = Data()
+        
+        if let parameters = parameters {
+            for (key, value) in parameters {
+                body.append("--\(boundary + lineBreak)")
+                body.append("Content-Disposition: form-data; name=\"\(key)\"\(lineBreak + lineBreak)")
+                body.append("\(value)" + lineBreak)
+            }
+        }
+        
+        for (key, value) in images {
+            if var imageData = value.pngData() {
+                let size = Double(imageData.count)/1024
+                if size > 500 {
+                    imageData = compressImage(image: value, fileSizeKb: Int(size)) ?? imageData
+                }
+                body.append("--\(boundary + lineBreak)")
+                body.append("Content-Disposition: form-data; name=\"\(key)\"; filename=\"\(key).jpg\"\(lineBreak)")
+                body.append("Content-Type: \("image/jpeg" + lineBreak + lineBreak)")
+                body.append(imageData)
+                body.append(lineBreak)
+                body.append("--\(boundary)--\(lineBreak)")
+            }
+        }
+        request.httpBody = body
+        self.sessionHitWith(request: request) { (result: Result<T, Error>) in
+            outBlock(result)
+        }
+    }
+    
+    func uploadVideo<T: Decodable>(api: String, parameters: [String: Any]? = nil, video: [String: Data], outBlock: @escaping (Result<T, Error>) -> Void) {
+        if !isConnectedToNetwork() {
+            outBlock(.failure(NSError(domain: "", code: 1, userInfo: [NSLocalizedDescriptionKey: "No Internet Connection"])))
+            return
+        }
+        guard let url = URL(string: (baseUrl + api).replacingOccurrences(of: " ", with: "%20")) else {
+            outBlock(.failure(NSError(domain: "", code: 1, userInfo: [NSLocalizedDescriptionKey: "Bad Url"])))
+            return
+        }
+        print("hitting: ",url.absoluteString)
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        let boundary = "Boundary-\(UUID().uuidString)"
+        request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        let lineBreak = "\r\n"
+        var body = Data()
+        
+        if let parameters = parameters {
+            for (key, value) in parameters {
+                body.append("--\(boundary + lineBreak)")
+                body.append("Content-Disposition: form-data; name=\"\(key)\"\(lineBreak + lineBreak)")
+                body.append("\(value)" + lineBreak)
+            }
+        }
+        
+        for (name, videoData) in video {
+                body.append("--\(boundary + lineBreak)")
+                body.append("Content-Disposition: form-data; name=\"\(name)\"; filename=\"\(name).mov\"\(lineBreak)")
+                body.append("Content-Type: \("application/octet-stream" + lineBreak + lineBreak)")
+                body.append(videoData)
+                body.append(lineBreak)
+                body.append("--\(boundary)--\(lineBreak)")
+        }
+        request.httpBody = body
+        self.sessionHitWith(request: request) { (result: Result<T, Error>) in
+            outBlock(result)
+        }
+    }
+    
+    func sendRequestWithBody<T: Decodable>(api: String, body: Data?, outputBlock: @escaping (Result<T, Error>) -> ()) {
+        print("hitting:" , api)
+        if !isConnectedToNetwork(){
+             outputBlock(.failure(NSError(domain: "", code: 1, userInfo: [NSLocalizedDescriptionKey: "No Internet Connection"])))
+            return
+        }
+        
+        guard let url = URL(string: api) else {
+             outputBlock(.failure(NSError(domain: "", code: 1, userInfo: [NSLocalizedDescriptionKey: "Bad Url"])))
+            return
+        }
+        var request = URLRequest(url: url)
+   
+        
+        if let data = body {
+            request.httpMethod = "POST"
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.httpBody = data
+        }
+        self.sessionHitWith(request: request) { (obj: Result<T, Error>) in
+            outputBlock(obj)
+        }
+    }
+    
+    private func sessionHitWith<T: Decodable>(request: URLRequest, outputBlock: @escaping (Result<T, Error>) -> ()) {
         URLSession.shared.dataTask(with: request) { (data, response, error) in
             DispatchQueue.main.async {
-                Loader.sharedInstance.hideLoader()
                 if let err = error {
-                    print(err.localizedDescription)
+                    outputBlock(.failure(err))
                     return
                 }
-                guard let data = data else {return}
+                guard let data = data else {
+                     outputBlock(.failure(NSError(domain: "", code: 1, userInfo: [NSLocalizedDescriptionKey: "Could not get the data"])))
+                    return
+                }
+                print(String(decoding: data, as: UTF8.self))
                 do {
-                    let obj = try JSONDecoder().decode(T.self, from: data)
-                    outputBlock(obj)
+                    let decoder = JSONDecoder()
+                    let formatter = DateFormatter()
+                    formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
+                    decoder.dateDecodingStrategy = .formatted(formatter)
+                    let obj = try decoder.decode(T.self, from: data)
+                    outputBlock(.success(obj))
                 } catch let jsonErr {
+                    outputBlock(.failure(jsonErr))
                     print(jsonErr)
                 }
             }
             }.resume()
     }
+    
+    //MARK: - Check Internet
+    private func isConnectedToNetwork() -> Bool {
+        var zeroAddress = sockaddr_in()
+        zeroAddress.sin_len = UInt8(MemoryLayout.size(ofValue: zeroAddress))
+        zeroAddress.sin_family = sa_family_t(AF_INET)
+        let defaultRouteReachability = withUnsafePointer(to: &zeroAddress) {
+            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {zeroSockAddress in
+                SCNetworkReachabilityCreateWithAddress(nil, zeroSockAddress)
+            }
+        }
+        if(defaultRouteReachability == nil){
+            return false
+        }
+        var flags : SCNetworkReachabilityFlags = []
+        if !SCNetworkReachabilityGetFlags(defaultRouteReachability!, &flags) {
+            return false
+        }
+        
+        let isReachable = flags.contains(.reachable)
+        let needsConnection = flags.contains(.connectionRequired)
+        
+        return (isReachable && !needsConnection)
+    }
+    
+    private func compressImage(image:UIImage, fileSizeKb:Int) -> Data? {
+        
+        if fileSizeKb < 2000 {
+            return image.jpegData(compressionQuality: 0.7)
+        } else if fileSizeKb < 3000 {
+            return image.jpegData(compressionQuality: 0.6)
+        } else if fileSizeKb < 4000 {
+            return image.jpegData(compressionQuality: 0.5)
+        } else if fileSizeKb < 5000 {
+            return image.jpegData(compressionQuality: 0.4)
+        } else if fileSizeKb < 6000 {
+            return image.jpegData(compressionQuality: 0.3)
+        } else if fileSizeKb < 10000 {
+            return image.jpegData(compressionQuality: 0.25)
+        } else if fileSizeKb < 20000 {
+            return image.jpegData(compressionQuality: 0.2)
+        } else {
+            return image.jpegData(compressionQuality: 0.15)
+        }
+    }
+
+
 }
+
+extension Data {
+    mutating func append(_ string: String, using encoding: String.Encoding = .utf8) {
+        if let data = string.data(using: encoding) {
+            append(data)
+        }
+    }
+}
+
+let imageCache = NSCache<NSString, UIImage>()
+class UrlImageView: UIImageView {
+    var string: String?
+    func setImageView(with urlStr: String, placeholderImage: UIImage? = nil) {
+        let urlStr = urlStr.replacingOccurrences(of: " ", with: "%20")
+        self.string = urlStr
+        if let placeholder = placeholderImage {
+            self.image = placeholder
+        }
+        if let image = imageCache.object(forKey: urlStr as NSString) {
+            self.image = image
+            return
+        }
+        guard let url = URL(string: self.string ?? "") else {return}
+        URLSession.shared.dataTask(with: url) { (data, resp, error) in
+            DispatchQueue.main.async {
+                if let err = error {
+                    print(err.localizedDescription)
+                    return
+                }
+                if self.string == url.absoluteString {
+                    guard let data = data else {return}
+                    guard let image = UIImage(data: data) else {return}
+                    self.image = image
+                    imageCache.setObject(image, forKey: url.absoluteString as NSString)
+                }
+            }
+            }.resume()
+    }
+}
+
 
 // Create textfeild with Padding
 class TextFieldwithPadding: UITextField {
